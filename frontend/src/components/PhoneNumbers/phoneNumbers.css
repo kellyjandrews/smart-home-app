@@ -1,0 +1,17 @@
+#numbersPanel {
+  position:relative;
+  min-height: 322px;
+}
+#addNumber, #verifyNumber {
+  position: absolute;
+  z-index: 20;
+  height:100%;
+  display:block;
+  width:calc(100% - 1.6rem);
+}
+
+#addNumber .panel-close, #verifyNumber .panel-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}

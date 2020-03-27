@@ -17,30 +17,54 @@ const nexmo = new Nexmo({
   apiSecret: api_secret
 });
 
-// This function will serve as the webhook for incoming SMS messages,
-// and will log the message into the Firebase Realtime Database
-exports.inboundSMS = functions.https.onRequest(async (req, res) => {
-  await admin.database().ref('/msgq').push(req.body);
-  res.send(200);
-});
-
-// This function listens for updates to the Firebase Realtime Database
-// and sends a message back to the original sender
-exports.sendSMS = functions.database.ref('/msgq/{pushId}')
-  .onCreate((message) => {
-    const { msisdn, text, to } = message.val();
-    // the incoming object - 'msisdn' is the your phone number, and 'to' is the Nexmo number
-    // nexmo.message.sendSms(to, msisdn, text);
-    return nexmo.message.sendSms(to, msisdn, `You sent the following text: ${text}`, (err, res) => {
-      if (err) {
-        console.log(err);
-      } else {
-        if (res.messages[0]['status'] === "0") {
-          console.log("Message sent successfully.");
-        } else {
-          console.log(`Message failed with error: ${res.messages[0]['error-text']}`);
-        }
-      }
+function verifyRequest(opts) {
+  return new Promise((resolve, reject) => {
+    nexmo.verify.request(opts, (err, res) => {
+      if (err) reject(err);
+      resolve(res);
     })
   });
+}
+
+function verifyCheck(opts) {
+  return new Promise((resolve, reject) => {
+    nexmo.verify.check(opts, (err, res) => {
+      if (err) reject(err);
+      resolve(res);
+    })
+  });
+}
+
+exports.requestVerify = functions.firestore.document('/phoneNumbers/{phoneNumber}')
+  .onCreate((entry, context) => {
+    let opts = {
+      number: context.params.phoneNumber,
+      brand: "Total Home Control",
+      workflow_id: 6,
+      pin_expiry: 120
+    };
+
+    return verifyRequest(opts)
+      .then((res) => {
+        console.log(res);
+        return admin.firestore().doc(`/phoneNumbers/${context.params.phoneNumber}`).update({ req_id: res.request_id })
+      })
+      .then((res) => console.log(res))
+      .catch((err) => console.error(err));
+  });
+
+exports.checkVerify = functions.https.onCall((data) => {
+  let opts = {
+    request_id: data.req_id,
+    code: data.code
+  };
+
+  return verifyCheck(opts)
+    .then((res) => {
+      console.log(res);
+      return admin.firestore().doc(`/phoneNumbers/${data.phoneNumber}`).update({ req_id: null, verified: true });
+    })
+    .then((res) => console.log(res))
+    .catch((err) => console.error(err));
+});
 
